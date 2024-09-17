@@ -44,6 +44,7 @@ void setup() {
   server.on("/", HTTP_GET, handleRoot);
   server.on("/save", HTTP_POST, handleSave);
   server.on("/control", HTTP_GET, handleControl);
+  server.on("/delete", HTTP_GET, handleDelete);  // Nueva ruta para borrar credenciales
   server.begin();
 }
 
@@ -69,6 +70,9 @@ void handleRoot() {
   html += "Subnet mask: <input type='text' name='subnet'><br>";
   html += "<input type='submit' value='Save'>";
   html += "</form>";
+  html += "<form method='get' action='/delete'>";
+  html += "<input type='submit' value='Delete WiFi Credentials'>";
+  html += "</form>";
   html += "</body></html>";
   server.send(200, "text/html", html);
 }
@@ -92,6 +96,13 @@ void handleSave() {
   ESP.restart();
 }
 
+void handleDelete() {
+  clearCredentialsFromEEPROM();  // Borra las credenciales
+  server.send(200, "text/plain", "WiFi credentials deleted. Restarting NodeMCU...");
+  delay(1000);
+  ESP.restart();  // Reinicia el dispositivo
+}
+
 bool loadCredentialsFromEEPROM() {
   EEPROM.get(0, ssid);
   EEPROM.get(32, password);
@@ -108,6 +119,14 @@ void saveCredentialsToEEPROM() {
   EEPROM.commit();
 }
 
+void clearCredentialsFromEEPROM() {
+  // Borra los valores almacenados en la EEPROM
+  for (int i = 0; i < 512; i++) {
+    EEPROM.write(i, 0);
+  }
+  EEPROM.commit();
+}
+
 void connectToWiFi() {
   WiFi.begin(ssid, password);
   WiFi.config(ip, ip, subnet);
@@ -119,7 +138,7 @@ void connectToWiFi() {
     Serial.print(".");
   }
 
-  Serial.println("\nSuccessfull connection");
+  Serial.println("\nSuccessful connection");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 }
