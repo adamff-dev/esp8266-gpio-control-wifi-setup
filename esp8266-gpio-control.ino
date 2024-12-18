@@ -30,10 +30,18 @@ char ssid[32];
 char password[64];
 IPAddress ip(192, 168, 4, 1);
 IPAddress subnet(255, 255, 255, 0);
+IPAddress gateway(192, 168, 4, 1);
 
 void setup() {
   EEPROM.begin(512);
   Serial.begin(115200);
+
+  // Remove this for using Serial
+  for (int i = 0; i < sizeof(pinMappings) / sizeof(pinMappings[0]); i++) {
+    int pin = pinMappings[i].value;
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, LOW);
+  }
 
   if (loadCredentialsFromEEPROM()) {
     connectToWiFi();
@@ -44,6 +52,7 @@ void setup() {
   server.on("/", HTTP_GET, handleRoot);
   server.on("/save", HTTP_POST, handleSave);
   server.on("/control", HTTP_GET, handleControl);
+  server.on("/delete", HTTP_GET, handleDelete);
   server.begin();
 }
 
@@ -67,7 +76,11 @@ void handleRoot() {
   html += "Password: <input type='password' name='password'><br>";
   html += "IP: <input type='text' name='ip'><br>";
   html += "Subnet mask: <input type='text' name='subnet'><br>";
+  html += "Gateway: <input type='text' name='gateway'><br>";
   html += "<input type='submit' value='Save'>";
+  html += "</form>";
+  html += "<form method='get' action='/delete'>";
+  html += "<input type='submit' value='Delete WiFi Credentials (AP mode)'>";
   html += "</form>";
   html += "</body></html>";
   server.send(200, "text/html", html);
@@ -78,11 +91,13 @@ void handleSave() {
   String newPassword = server.arg("password");
   String newIP = server.arg("ip");
   String newSubnet = server.arg("subnet");
+  String newGateway = server.arg("gateway");
 
   newSSID.toCharArray(ssid, 32);
   newPassword.toCharArray(password, 64);
   ip.fromString(newIP);
   subnet.fromString(newSubnet);
+  gateway.fromString(newGateway);
 
   saveCredentialsToEEPROM();
   connectToWiFi();
@@ -92,36 +107,67 @@ void handleSave() {
   ESP.restart();
 }
 
+void handleDelete() {
+  clearCredentialsFromEEPROM();
+  server.send(200, "text/plain", "WiFi credentials deleted. Restarting NodeMCU...");
+  delay(1000);
+  ESP.restart();
+}
+
 bool loadCredentialsFromEEPROM() {
   EEPROM.get(0, ssid);
   EEPROM.get(32, password);
-  EEPROM.get(96, ip);
-  EEPROM.get(112, subnet);
-  return (strlen(ssid) > 0);
+  EEPROM.get(64, ip);
+  EEPROM.get(128, subnet);
+  EEPROM.get(160, gateway);
+
+  if (strlen(ssid) > 0 && strlen(password) > 0 && ip != IPAddress(0,0,0,0) && subnet != IPAddress(0,0,0,0) && gateway != IPAddress(0,0,0,0)) {
+    return true;
+  }
+
+  return false;
 }
 
 void saveCredentialsToEEPROM() {
   EEPROM.put(0, ssid);
   EEPROM.put(32, password);
-  EEPROM.put(96, ip);
-  EEPROM.put(112, subnet);
+  EEPROM.put(64, ip);
+  EEPROM.put(128, subnet);
+  EEPROM.put(160, gateway);
+  EEPROM.commit();
+}
+
+void clearCredentialsFromEEPROM() {
+  for (int i = 0; i < 512; i++) {
+    EEPROM.write(i, 0);
+  }
   EEPROM.commit();
 }
 
 void connectToWiFi() {
   WiFi.begin(ssid, password);
-  WiFi.config(ip, ip, subnet);
-  Serial.print("Connected to ");
+  WiFi.config(ip, gateway, subnet);
+  Serial.print("Connecting to WiFi network: ");
   Serial.println(ssid);
 
+  unsigned long startAttemptTime = millis();
+
   while (WiFi.status() != WL_CONNECTED) {
+    if (millis() - startAttemptTime >= 10000) {
+      Serial.println("\nFailed to connect to WiFi. Entering AP mode...");
+      createAP();
+      return;
+    }
+
     delay(1000);
     Serial.print(".");
   }
 
-  Serial.println("\nSuccessfull connection");
+  Serial.println("\nSuccessful connection");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+  Serial.print("Gateway: ");
+  Serial.println(WiFi.gatewayIP());
 }
 
 // ---- GPIO handle ----
