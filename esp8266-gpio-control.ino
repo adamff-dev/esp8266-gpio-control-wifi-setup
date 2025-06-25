@@ -193,6 +193,13 @@ void handleControl() {
         digitalWrite(pin, LOW);
         String json_response = "{\"status\":\"Pin " + pinStr + " off\"}";
         server.send(200, "application/json", json_response);
+      } else if (action == "toggle") {
+        pinMode(pin, OUTPUT);
+        int currentState = digitalRead(pin);
+        int newState = !currentState;
+        digitalWrite(pin, newState);
+        String json_response = "{\"status\":\"Pin " + pinStr + " toggled to " + (newState == HIGH ? "on" : "off") + "\"}";
+        server.send(200, "application/json", json_response);
       } else {
         String json_response = "{\"error\":\"Invalid action\"}";
         server.send(400, "application/json", json_response);
